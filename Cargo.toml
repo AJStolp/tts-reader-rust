@@ -1,13 +1,36 @@
 [package]
-name = "tts_reader"
+name = "tts_backend"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-reqwest = { version = "0.11", features = ["blocking", "json"] }
+# HTTP framework for building the backend
+axum = "0.6"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+chrono = "0.4"
+
+# Async runtime for concurrency
+tokio = { version = "1", features = ["full"] }
+
+# JSON serialization/deserialization
 serde = { version = "1.0", features = ["derive"] }
-rodio = "0.15"
+serde_json = "1.0"
+
+# HTTP client for interacting with Amazon Polly
+reqwest = { version = "0.11", features = ["json"] }
+
+# Environment variable management
 dotenv = "0.15"
-clipboard = "0.5.0"
 
+# Logging and debugging
+tracing = "0.1"
+tracing-subscriber = "0.3"
 
+# Middleware like CORS or compression
+tower-http = "0.3"
+
+[dev-dependencies]
+# Development tool to automatically watch and rebuild code
+cargo-watch = "8.4.0"
