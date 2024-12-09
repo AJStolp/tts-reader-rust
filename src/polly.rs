@@ -4,6 +4,7 @@ use std::env;
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use sha2::{Sha256, Digest};
+use std::io;
 
 // Define the PollyClient struct
 pub struct PollyClient {
@@ -16,11 +17,10 @@ pub struct PollyClient {
 impl PollyClient {
     // Constructor for PollyClient
     pub fn new() -> Self {
-      let endpoint = format!(
+        let endpoint = format!(
             "https://polly.{}.amazonaws.com",
             env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string()) // Default to us-east-1
-      );
-
+        );
 
         Self {
             client: Client::new(),
@@ -32,7 +32,6 @@ impl PollyClient {
 
     // Generate AWS Signature Version 4
     fn generate_aws_signature(&self, payload: &str, host: &str, region: &str) -> String {
-        // Get the current date and time in UTC
         let now = Utc::now();
         let date = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
@@ -84,22 +83,21 @@ impl PollyClient {
     }
 
     // Send a TTS request to Amazon Polly
-    pub async fn synthesize_speech(&self, text: &str, voice_id: &str) -> Result<String, reqwest::Error> {
+    pub async fn synthesize_speech(&self, text: &str, voice_id: &str) -> Result<Vec<u8>, io::Error> {
         let payload = json!({
             "Text": text,
             "VoiceId": voice_id,
-            "OutputFormat": "mp3"
+            "OutputFormat": "mp3",
+            "Engine": "neural" // Ensure Engine is correctly specified
         })
         .to_string();
 
-        // Generate AWS Signature
         let signature = self.generate_aws_signature(
             &payload,
-            "polly.us-west-2.amazonaws.com", // Update to your AWS region
-            "us-west-2",                    // Update to your AWS region
+            "polly.us-east-1.amazonaws.com", // Replace with your region
+            "us-east-1",                    // Replace with your region
         );
 
-        // Make the HTTP POST request
         let response = self
             .client
             .post(&format!("{}/v1/speech", self.endpoint))
@@ -108,10 +106,25 @@ impl PollyClient {
             .header("Content-Type", "application/json")
             .body(payload)
             .send()
-            .await?;
+            .await;
 
-        // Return the response as a string
-        Ok(response.text().await?)
+        match response {
+            Ok(res) if res.status().is_success() => {
+                let bytes = res.bytes().await.map_err(|e| {
+                    io::Error::new(io::ErrorKind::Other, format!("Failed to read response bytes: {}", e))
+                })?;
+                Ok(bytes.to_vec())
+            }
+            Ok(res) => {
+                let error_message = format!(
+                    "Polly returned error: {} - {}",
+                    res.status(),
+                    res.text().await.unwrap_or_else(|_| "Unknown error".to_string())
+                );
+                Err(io::Error::new(io::ErrorKind::Other, error_message))
+            }
+            Err(e) => Err(io::Error::new(io::ErrorKind::Other, format!("Request failed: {}", e))),
+        }
     }
 }
 

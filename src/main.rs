@@ -1,14 +1,15 @@
 use axum::{
-    routing::post,
+    routing::{post, get_service},
     Router, Json,
+    http::StatusCode,
 };
-use axum::response::{IntoResponse, Response};
-use tower_http::cors::{Any, CorsLayer};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use tower_http::services::ServeDir;
+use tower_http::cors::{CorsLayer, Any}; // Import CORS
 use tracing_subscriber;
-use serde::{Deserialize, Serialize}; // Import serde macros
-mod polly;
 
+mod polly;
 use polly::PollyClient;
 
 #[tokio::main]
@@ -19,17 +20,18 @@ async fn main() {
     // Load environment variables from .env file
     dotenv::dotenv().ok();
 
-    // Define the CORS layer
+    // Add CORS layer
     let cors = CorsLayer::new()
-        .allow_origin(Any) // Allows requests from any origin. Replace `Any` with specific origins for security.
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(Any) // Allow all origins
+        .allow_methods(Any) // Allow all HTTP methods
+        .allow_headers(Any); // Allow all headers
 
     // Define the application routes
     let app = Router::new()
         .route("/generate-tts", post(generate_tts))
         .route("/voices", post(get_voices))
-        .layer(cors);
+        .nest_service("/", get_service(ServeDir::new("./")).handle_error(|_| async { (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error") }))
+        .layer(cors); // Add the CORS layer here
 
     // Start the HTTP server
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
@@ -41,37 +43,39 @@ async fn main() {
         .unwrap();
 }
 
-#[derive(Debug, Deserialize)] // Added Debug
+// Request payload for TTS
+#[derive(Deserialize, Debug)]
 struct TtsRequest {
     text: String,
     voice_id: String,
 }
 
-#[derive(Serialize)] // Serialize for response
-struct TtsResponse {
-    audio_url: String,
-}
+// Response payload for TTS
+// #[derive(Serialize)]
+// struct TtsResponse {
+//     audio_url: String,
+// }
 
 // Handler for generating TTS
-async fn generate_tts(Json(payload): Json<TtsRequest>) -> Response {
+async fn generate_tts(Json(payload): Json<TtsRequest>) -> Result<(StatusCode, Vec<u8>), (StatusCode, String)> {
+    let polly_client = PollyClient::new();
     tracing::info!("Request received with payload: {:?}", payload);
 
-    let polly_client = PollyClient::new();
     match polly_client.synthesize_speech(&payload.text, &payload.voice_id).await {
-        Ok(audio_url) => {
-            tracing::info!("TTS generation succeeded. Audio URL: {}", audio_url);
-            Json(TtsResponse { audio_url }).into_response()
+        Ok(audio_data) => {
+            tracing::info!("TTS generation succeeded");
+            Ok((
+                StatusCode::OK,
+                audio_data,
+            ))
         }
         Err(e) => {
-            tracing::error!("TTS generation failed: {:?}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Error generating TTS".to_string(),
-            )
-                .into_response()
+            tracing::error!("TTS generation failed: {}", e);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
 }
+
 
 // Placeholder for voices endpoint (to be implemented)
 async fn get_voices() -> &'static str {
