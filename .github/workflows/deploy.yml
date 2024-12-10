@@ -1,0 +1,38 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Step 2: Install Rust toolchain
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      # Step 3: Build the project
+      - name: Build project
+        run: cargo build --release
+
+      # Step 4: Deploy to EC2 via SSH
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v0.1.2
+        with:
+          host: 3.86.199.1
+          username: ec2-user
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          script: |
+            cd /home/ec2-user/tts-reader-rust || exit
+            git pull origin main
+            cargo build --release
+            sudo systemctl restart tts-app
