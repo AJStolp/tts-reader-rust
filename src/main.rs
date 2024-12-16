@@ -6,7 +6,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tower_http::services::ServeDir;
-use tower_http::cors::{CorsLayer, Any}; // Import CORS
+use tower_http::cors::{CorsLayer, Any};
 use tracing_subscriber;
 
 mod polly;
