@@ -28,6 +28,9 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
+            sudo yum update -y
+            sudo yum install -y openssl-devel pkg-config # Install OpenSSL and pkg-config
+
             cd /home/ec2-user/tts-reader-rust || exit
             git pull origin main
             cargo build --release
