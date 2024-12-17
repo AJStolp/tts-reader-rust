@@ -21,17 +21,14 @@ jobs:
       - name: Build project
         run: cargo build --release
 
-      - name: SSH into EC2 and deploy
-        uses: appleboy/ssh-action@master
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v0.1.2
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
+          host: 3.86.199.1
+          username: ec2-user
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            if [ ! -d "/home/ec2-user/tts-reader-rust" ]; then
-              git clone https://github.com/AJStolp/tts-reader-rust.git /home/ec2-user/tts-reader-rust
-            fi
-            cd /home/ec2-user/tts-reader-rust
+            cd /home/ec2-user/tts-reader-rust || exit
             git pull origin main
             cargo build --release
             sudo systemctl restart tts-app
