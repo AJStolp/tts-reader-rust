@@ -36,6 +36,7 @@ jobs:
             git pull origin main
             cargo build --release
             sudo systemctl restart tts-app
+          debug: true
 
       - name: Debug SSH Key
         run: echo "${{ secrets.EC2_PRIVATE_KEY }}" | ssh-keygen -l -f -
