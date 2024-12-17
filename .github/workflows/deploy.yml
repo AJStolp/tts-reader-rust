@@ -4,36 +4,38 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch: # Allows you to trigger the workflow manually if needed.
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
+      # Step 1: Checkout the code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Step 2: Install Rust toolchain
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      # Step 2: Copy project files to EC2
+      - name: Copy files to EC2
+        uses: appleboy/scp-action@master
         with:
-          toolchain: stable
-
-      # Step 3: Build the project
-      - name: Build project
-        run: cargo build --release
-
-      # Step 4: Deploy to EC2 via SSH
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v0.1.2
-        with:
-          host: 3.86.199.1
-          user: ec2-user
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
+          port: 22
+          source: "." # Copy the entire project directory
+          target: "/home/ec2-user/tts-reader-rust" # Destination folder on the server
+
+      # Step 3: Run commands on EC2
+      - name: Deploy and restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          port: 22
           script: |
-            cd /home/ec2-user/tts-reader-rust || exit
-            git pull origin main
+            cd /home/ec2-user/tts-reader-rust
+            git pull origin main || echo "Already up-to-date"
             cargo build --release
-            sudo systemctl restart tts-app
-          debug: true
+            sudo systemctl restart tts-app || echo "Restart failed, check systemctl status tts-app"
