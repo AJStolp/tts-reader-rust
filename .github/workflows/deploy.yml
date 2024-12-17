@@ -24,13 +24,14 @@ jobs:
       - name: Build project
         run: cargo build --release
 
-      # Step 4: Deploy to EC2 via SSH
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v0.1.2
+      # Step 4: SSH into EC2 and deploy
+      - name: SSH into EC2 and deploy
+        uses: appleboy/ssh-action@master # Use the 'master' version of the action
         with:
-          host: 3.86.199.1
-          username: ec2-user
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
+          port: 22
           script: |
             cd /home/ec2-user/tts-reader-rust || exit
             git pull origin main
