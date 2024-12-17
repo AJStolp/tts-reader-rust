@@ -31,4 +31,3 @@ jobs:
             cd /home/ec2-user/tts-reader-rust || exit
             git pull origin main
             cargo build --release
-            sudo systemctl restart tts-app
