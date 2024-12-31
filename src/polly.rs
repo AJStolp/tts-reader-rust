@@ -41,7 +41,7 @@ impl PollyClient {
         let payload = json!({
             "Text": text,
             "VoiceId": voice_id,
-            "OutputFormat": "mp3", // MP3 format for better compatibility
+            "OutputFormat": "mp3",
             "Engine": "neural"
         })
         .to_string();
@@ -71,7 +71,55 @@ impl PollyClient {
                     Err(err) => Some((Err(err), resp)),
                 }
             }))
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Polly returned error: {}", response.status()),
+            ))
+        }
+    }
 
+    /// Fetch speech marks (word and sentence timing data) from Polly
+    pub async fn get_speech_marks(
+        &self,
+        text: &str,
+        voice_id: &str,
+    ) -> Result<Vec<serde_json::Value>, io::Error> {
+        let payload = json!({
+            "Text": text,
+            "VoiceId": voice_id,
+            "OutputFormat": "json",
+            "SpeechMarkTypes": ["word", "sentence"],
+            "Engine": "neural"
+        })
+        .to_string();
+
+        let signature = self.generate_aws_signature(
+            &payload,
+            "polly.us-east-1.amazonaws.com",
+            "us-east-1",
+        );
+
+        let response = self
+            .client
+            .post(&format!("{}/v1/speech", self.endpoint))
+            .header("Authorization", signature)
+            .header("x-amz-date", Utc::now().format("%Y%m%dT%H%M%SZ").to_string())
+            .header("Content-Type", "application/json")
+            .body(payload)
+            .send()
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Request failed: {}", e)))?;
+
+        if response.status().is_success() {
+            let body = response.text().await.map_err(|e| {
+                io::Error::new(io::ErrorKind::Other, format!("Failed to read response: {}", e))
+            })?;
+            let marks: Vec<serde_json::Value> =
+                serde_json::from_str(&body).map_err(|e| {
+                    io::Error::new(io::ErrorKind::Other, format!("JSON parse error: {}", e))
+                })?;
+            Ok(marks)
         } else {
             Err(io::Error::new(
                 io::ErrorKind::Other,
@@ -86,13 +134,11 @@ impl PollyClient {
         let date = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
-        // Canonical request
         let canonical_uri = "/v1/speech";
         let canonical_query_string = "";
         let canonical_headers = format!("host:{}\nx-amz-date:{}\n", host, amz_date);
         let signed_headers = "host;x-amz-date";
 
-        // Hash the payload
         let payload_hash = hex::encode(Sha256::digest(payload.as_bytes()));
 
         let canonical_request = format!(
@@ -100,7 +146,6 @@ impl PollyClient {
             canonical_uri, canonical_query_string, canonical_headers, signed_headers, payload_hash
         );
 
-        // String to sign
         let algorithm = "AWS4-HMAC-SHA256";
         let credential_scope = format!("{}/{}/polly/aws4_request", date, region);
         let canonical_request_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
@@ -110,7 +155,6 @@ impl PollyClient {
             algorithm, amz_date, credential_scope, canonical_request_hash
         );
 
-        // Signature calculation
         let k_date = sign(format!("AWS4{}", self.secret_key).as_bytes(), date.as_bytes());
         let k_region = sign(&k_date, region.as_bytes());
         let k_service = sign(&k_region, b"polly");
